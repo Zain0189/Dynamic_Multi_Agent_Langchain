@@ -1,0 +1,16 @@
+# Virtual Environment
+venv/
+env/
+*.venv
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS & Editor settings
+.DS_Store
+.vscode/
+.idea/
+
+# Local database or index builds (optional: remove if you want faiss indexes tracked)
+# faiss_index_*
