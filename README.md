@@ -1,39 +1,120 @@
-# For regular updates push the code on development branch:
+# Dynamic Multi-Service Agent
 
-# Make sure you are on development branch
+An autonomous employee-support assistant for company data and internal policy questions. The backend uses FastAPI, LangGraph, LangChain, and Groq; the frontend is a plain HTML/CSS/JavaScript chat interface.
 
-git checkout development
+## Features
 
-# Stage changed files
+- Employee and project lookups from the local SQLite database.
+- Employee attendance checks.
+- Open job search.
+- HR policy question answering with FAISS retrieval.
+- Healthcare policy, coverage, and claims question answering with FAISS retrieval.
+- Streaming Markdown responses through a single `/chat` endpoint.
+- Groq model: `qwen/qwen3.8-27b`, capped at 800 output tokens.
 
-git add .
+## Project Structure
 
-# Commit changes
+```text
+backend/
+	agent.py                         LangGraph ReAct agent and streaming logic
+	db_tools.py                      SQLite query tools
+	policy_tools.py                  HR and healthcare policy tools
+	rag.py                           FAISS retrieval chains and embeddings
+	main.py                          FastAPI application
+	db_seed.py                       Database seed script
+	company.db                       Local SQLite database
+	documents/                       Policy PDF files
+	faiss_index_*/                   Saved FAISS indexes
+frontend/
+	index.html                       Chat interface
+	script.js                        UI behavior and response streaming
+	style.css                        Interface styling
+```
 
-git commit -m "Add feature description"
+## Requirements
 
-# Push updates to development branch on GitHub
+- Python 3.11 or newer recommended.
+- A Groq API key.
+- Ollama running locally at `http://127.0.0.1:11434`.
+- Ollama embedding model `nomic-embed-text`.
 
-git push origin development
+## Setup
 
-# When a feature is developed and tested push the code to main(production) branch
+From the project root, create or activate a virtual environment and install the backend dependencies:
 
-# 1. Switch to production branch
+```powershell
+cd backend
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
 
-git checkout main
+Create `backend/.env` and add your Groq key:
 
-# 2. Pull latest production code just in case
+```env
+GROQ_API_KEY=your_groq_api_key
+```
 
-git pull origin main
+The `.env` file is ignored by Git and must not be committed.
 
-# 3. Merge tested changes from development into production
+Install and start Ollama, then pull the embedding model:
 
-git merge development
+```powershell
+ollama pull nomic-embed-text
+```
 
-# 4. Push updated production code to GitHub
+The policy PDF files and their FAISS indexes should be available under `backend/documents/` and `backend/faiss_index_*/`. If an index is missing, the application builds it when the RAG chain starts.
 
-git push origin main
+## Run the Backend
 
-# 5. Switch back to development to continue working
+```powershell
+cd backend
+fastapi dev main.py
+```
 
-git checkout development
+The API is available at `http://127.0.0.1:8000`.
+
+## Run the Frontend
+
+With the backend running, open [frontend/index.html](frontend/index.html) in a browser. The frontend sends chat requests to `http://127.0.0.1:8000/chat` and renders the plain-text Markdown stream as it arrives.
+
+## API
+
+### `POST /chat`
+
+Request body:
+
+```json
+{
+  "message": "Which projects is Ali Hassan assigned to?"
+}
+```
+
+Example PowerShell request:
+
+```powershell
+Invoke-WebRequest `
+	-Uri http://127.0.0.1:8000/chat `
+	-Method Post `
+	-ContentType "application/json" `
+	-Body '{"message":"What is the HR leave policy?"}'
+```
+
+The response is streamed as `text/plain`. Tool execution details, SQL, and intermediate model output are not sent to the client; only the final assistant response is streamed.
+
+## Agent Tools
+
+The agent selects tools based on the request:
+
+- `get_employee_and_project_details` for employee, project, and assignment information.
+- `check_employee_attendance` for attendance status.
+- `search_job_openings` for open roles.
+- `query_hr_policy` for HR and workplace policies.
+- `query_healthcare_policy` for healthcare coverage and medical policy questions.
+
+## Development Notes
+
+- Database tools use read-only SQLite connections.
+- Policy answers are restricted to retrieved document context.
+- Groq credentials are loaded with `python-dotenv` from `backend/.env`.
+- The frontend uses `marked.js` with GitHub-Flavored Markdown and `breaks: false` to preserve normal Markdown list formatting.
