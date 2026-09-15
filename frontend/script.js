@@ -3,34 +3,7 @@
    Data source: data.json
    ============================================================ */
 
-// RAG Integration Functions
-
-// For streaming
-let activeAssistant = null;
-
-function setActiveAssistant(button, assistant) {
-  if (activeAssistant === assistant) {
-    activeAssistant = null;
-    button.classList.remove("active-assistant");
-    return;
-  }
-
-  document.querySelectorAll(".suggest-chip").forEach(btn => {
-    btn.classList.remove("active-assistant");
-  });
-
-  activeAssistant = assistant;
-  button.classList.add("active-assistant");
-}
-
-hrBtn.addEventListener("click", () => {
-  setActiveAssistant(hrBtn, "hr");
-});
-
-healthcareBtn.addEventListener("click", () => {
-  setActiveAssistant(healthcareBtn, "healthcare");
-});
-
+// Autonomous agent integration
 
 function createStreamingBotMessage() {
 
@@ -41,55 +14,32 @@ function createStreamingBotMessage() {
     <div class="chat-avatar bot">
       <i class="fa-solid fa-robot"></i>
     </div>
-    <div class="chat-bubble"></div>
+    <div class="chat-bubble bot-message">
+      <div class="message-content"></div>
+    </div>
   `;
 
   wrap.appendChild(div);
   wrap.scrollTop = wrap.scrollHeight;
-  return div.querySelector('.chat-bubble');
+  return div.querySelector('.message-content');
 }
 
 
-async function askHRStream(question) {
-
-  const response = await fetch(
-    "http://localhost:8000/ask-HR-Policy",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        prompt: question
-      })
-    }
-  );
+async function streamAgentResponse(question) {
+  const response = await fetch("http://127.0.0.1:8000/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ message: question })
+  });
 
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
 
-  return response.body.getReader();
-}
-
-
-async function askHealthCareStream(question) {
-
-  const response = await fetch(
-    "http://localhost:8000/ask-Healthcare-Policy",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        prompt: question
-      })
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
+  if (!response.body) {
+    throw new Error("Streaming response body is unavailable.");
   }
 
   return response.body.getReader();
@@ -111,6 +61,13 @@ const STATE = {
 // ── Utilities ────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+if (window.marked) {
+  marked.setOptions({
+    breaks: false,  // Prevents converting standard newlines into explicit <br> tags
+    gfm: true
+  });
+}
 
 function toast(msg, type = 'info', icon = 'fa-circle-info') {
   const wrap = $('toastContainer');
@@ -626,13 +583,41 @@ function quickAction(action) {
 // ── Chat Input ────────────────────────────────────────────────
 function bindChatInput() {
   const ta = $('chatInput');
-  ta.addEventListener('input', () => { ta.style.height='auto'; ta.style.height=Math.min(ta.scrollHeight,150)+'px'; });
-  ta.addEventListener('keydown', e => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } });
-  $('chatSend').addEventListener('click', sendChat);
-  $('chatAttachBtn').addEventListener('click', () => {
-    openSidebar(); switchTab('docs');
-    setTimeout(() => $('fileInput').click(), 150);
+  const sendBtn = $('chatSend');
+  const attachBtn = $('chatAttachBtn');
+
+  if (!ta) return;
+
+  ta.addEventListener('input', () => {
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight, 150) + 'px';
   });
+
+  ta.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      console.log('Send triggered');
+      sendChat();
+    }
+  });
+
+  if (sendBtn) {
+    sendBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      console.log('Send triggered');
+      sendChat();
+    });
+  }
+
+  if (attachBtn) {
+    attachBtn.addEventListener('click', () => {
+      openSidebar(); switchTab('docs');
+      setTimeout(() => {
+        const fileInput = $('fileInput');
+        if (fileInput) fileInput.click();
+      }, 150);
+    });
+  }
 }
 
 // Suggestion chips — call functions directly, no regex dependency
@@ -656,8 +641,12 @@ function injectSuggestion(action) {
 
 function sendChat() {
   const ta = $('chatInput');
+  if (!ta) return;
+
   const msg = ta.value.trim();
   if (!msg) return;
+
+  console.log('Send triggered');
   ta.value = ''; ta.style.height = 'auto';
   addUserMessage(msg);
   addHistory(msg.substring(0,38) + (msg.length>38?'…':''), 'fa-comment');
@@ -667,228 +656,33 @@ function sendChat() {
 
 // ── Chat Intelligence ─────────────────────────────────────────
 async function processChat(msg) {
-  const lower = msg.toLowerCase().trim();
+  const bubble = createStreamingBotMessage();
+  let accumulatedText = "";
 
-    if (/\b(medical|claim|health|hospital|reimburse|opd|dental|maternity|policy|policies|leave policy|wfh|work from home|conduct|increment|salary|training|travel|expense)\b/i.test(lower)) {
-    try {
-        showTyping();
-        let reader;
-        if (activeAssistant === "hr") {
-          console.log("Using HR assistant");
-          reader = await askHRStream(msg);
-        } else if (activeAssistant === "healthcare") {
-          console.log("Using Healthcare assistant");
-          reader = await askHealthCareStream(msg);
-        } else {
-          removeTyping();
-          addBotMessage("Please select an assistant.");
-          return;
-        }
-        
-        removeTyping();
-        const decoder = new TextDecoder();
-        const bubble = createStreamingBotMessage();
-        let completeAnswer = "";
-        
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value);
-            completeAnswer += chunk;
-            bubble.innerHTML = marked.parse(completeAnswer);
-            $('chatMessages').scrollTop = $('chatMessages').scrollHeight;
-        }
+  try {
+    const reader = await streamAgentResponse(msg);
+    const decoder = new TextDecoder('utf-8');
 
-        return;
-    } catch (error) {
-        console.error(error);
-        addBotMessage(
-            "The information was not found."
-        );
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      accumulatedText += chunk;
+      bubble.innerHTML = window.marked ? marked.parse(accumulatedText) : accumulatedText;
+      $('chatMessages').scrollTop = $('chatMessages').scrollHeight;
     }
-  }
 
-  // ── Greetings
-  if (/^(hi|hello|hey|salam|good\s*(morning|afternoon|evening)|howdy|greetings)/i.test(lower)) {
-    addBotWelcome(); return;
-  }
-
-  // ── Help
-  if (/\b(help|what can you do|commands|capabilities|features)\b/i.test(lower)) {
-    addBotMessage(
-      `Here's what I can do:<br><br>` +
-      `<b>🔍 Data Queries</b><br>` +
-      `• <code>EMP001</code>–<code>EMP020</code> — employee profile<br>` +
-      `• <i>show all employees</i> — full employee list<br>` +
-      `• <i>show all projects</i> — all 14 projects<br><br>` +
-      `<b>📊 Reports</b><br>` +
-      `• <i>attendance report</i> — present/absent/leave<br>` +
-      `• <i>jobs</i> or <i>hiring</i> — 14 open positions<br>` +
-      `• <i>medical claims</i> — reimbursement status<br>` +
-      `• <i>HR policy</i> — leave, WFH, conduct &amp; more<br><br>` +
-      `<b>📄 Documents</b><br>` +
-      `• Upload .txt/.csv/.json/.md in the Documents tab<br>` +
-      `• Ask any question about the uploaded file`
-    ); return;
-  }
-
-  // ── Employee ID (EMP001–EMP020)
-  const empMatch = lower.match(/\bemp\s*0*(\d{1,3})\b/);
-  if (empMatch) {
-    const id = 'EMP' + String(empMatch[1]).padStart(3,'0');
-    const emp = STATE.data.employees.find(e => e.id === id);
-    if (emp) { addBotMessageHTML(renderEmployeeCard(emp)); return; }
-    addBotMessage(`No employee found with ID <b>${esc(id)}</b>. Try EMP001–EMP020.`); return;
-  }
-
-  // ── All employees (many phrasings)
-  if (/\b(show|list|get|display)\b.*\b(all\b.*\b)?(employees?|staff|team|workers?|people)\b/i.test(lower) ||
-      /\ball\s+(employees?|staff|team|workers?)\b/i.test(lower) ||
-      /\b(employees?|staff)\s*(list|all|table)\b/i.test(lower) ||
-      lower === 'employees' || lower === 'staff' || lower === 'all employees') {
-    showAllEmployees();
-    return;
-  }
-
-  // ── Specific employee name search
-  const empByName = STATE.data.employees.filter(e => e.name.toLowerCase().includes(lower.replace(/\b(find|show|who is|search|lookup|employee)\b/g,'').trim()));
-  if (empByName.length === 1) { addBotMessageHTML(renderEmployeeCard(empByName[0])); return; }
-  if (empByName.length > 1)  { addBotMessageHTML(renderEmployeeTable(empByName)); return; }
-
-  // ── All projects
-  if (/\b(all|list|show)\s*projects?\b/i.test(lower) || /\bprojects?\s*(list|all|overview)\b/i.test(lower)) {
-    showAllProjects();
-    addBotMessage(`Showing all <b>${STATE.data.projects.length-1} projects</b> in the results panel.`); return;
-  }
-
-  // ── Project by name
-  const projMatch = STATE.data.projects.find(p =>
-    p.id !== 'ALL' && (lower.includes(p.name.toLowerCase()) || lower.includes(p.id.toLowerCase()))
-  );
-  if (projMatch) {
-    showProjectDetail(projMatch.id);
-    addBotMessage(`Showing details for project <b>${esc(projMatch.name)}</b>.`); return;
-  }
-
-  // ── Attendance
-  if (/\b(attend|present|absent|leave|workforce|who is (in|out|present|absent))\b/i.test(lower)) {
-    showAttendanceReport();
-    addBotMessage("Attendance report loaded in the results panel above."); return;
-  }
-
-  // ── How many employees
-  if (/how many (employees?|staff|people|workers?)/i.test(lower)) {
-    const n = STATE.data.employees.length;
-    const active = STATE.data.employees.filter(e=>e.status==='Active').length;
-    addBotMessage(`We have <b>${n} total employees</b>, of which <b>${active} are Active</b> and <b>${n-active} are on leave/inactive</b>.`); return;
-  }
-
-  // ── How many projects
-  if (/how many projects?/i.test(lower)) {
-    const n = STATE.data.projects.filter(p=>p.id!=='ALL').length;
-    addBotMessage(`There are <b>${n} projects</b> in the system. Type <i>"show all projects"</i> to see them.`); return;
-  }
-
-  // ── Jobs / Hiring
-  if (/\b(jobs?|hiring|recruit|vacanc|opening|position|career)\b/i.test(lower)) {
-    showJobsPanel();
-    const open = STATE.data.jobs.filter(j=>j.status==='Open').length;
-    addBotMessage(`Found <b>${open} open positions</b>. Check the results panel.`); return;
-  }
-
-  // ── Specific job title
-  const jobMatch = STATE.data.jobs.filter(j => j.title.toLowerCase().includes(lower.replace(/\b(find|show|search|job|position)\b/g,'').trim()));
-  if (jobMatch.length) { addBotMessageHTML(renderJobsTable(jobMatch)); return; }
-
-  // ── Medical Claims
-  // if (/\b()\b/i.test(lower)) {
-  //   showMedicalClaims();
-  //   addBotMessage("Medical claims loaded. Check the results panel."); return;
-  // }
-
-  // ── HR and HealthCare Policy Assistant
-
-
-  // if (/\b(policy|policies|leave policy|wfh|work from home|conduct|increment|salary|training|travel|expense)\b/i.test(lower)) {
-
-  //   try {
-  //     showTyping();
-  //     const reader = await askHRStream(msg);
-  //     removeTyping();
-  //     const decoder = new TextDecoder();
-  //     const bubble = createStreamingBotMessage();
-  //     let completeAnswer = "";
-
-  //     while (true) {
-  //       const { done, value } = await reader.read();
-  //       if (done) break;
-  //       const chunk = decoder.decode(value);
-  //       completeAnswer += chunk;
-  //       bubble.innerHTML = marked.parse(completeAnswer);
-  //       $('chatMessages').scrollTop = $('chatMessages').scrollHeight;
-  //     }
-
-  //     return;
-
-  //   } catch (error) {
-  //     console.error(error);
-  //     addBotMessage(
-  //       "The information was not found."
-  //     );
-  //   }
-  // }
-
-  // ── Department search
-  const deptKw = lower.match(/\b(engineering|hr|finance|it|marketing|admin|operations|logistics|healthcare|design|compliance)\b/);
-  if (deptKw) {
-    const dept = deptKw[1].charAt(0).toUpperCase() + deptKw[1].slice(1);
-    const emps = STATE.data.employees.filter(e => e.department.toLowerCase() === deptKw[1]);
-    if (emps.length) {
-      showResults(`Department: <b>${esc(dept)}</b>`, renderEmployeeTable(emps));
-      addBotMessage(`Found <b>${emps.length} employees</b> in the <b>${esc(dept)}</b> department.`);
-      return;
+    if (!accumulatedText.trim()) {
+      bubble.innerHTML = "No response received.";
     }
+  } catch (error) {
+    console.error(error);
+    bubble.innerHTML = "I couldn’t reach the agent service right now.";
   }
-
-  // ── Document Q&A fallback
-  if (STATE.uploadedDocs.length && STATE.activeDocIndex !== null) {
-    const doc = STATE.uploadedDocs[STATE.activeDocIndex];
-    const answer = searchInDocument(doc.content, msg);
-    addBotMessage(`<b>From "${esc(doc.name)}":</b><br>${answer}`); return;
-  }
-
-  // ── Keyword fallback across all data
-  const kw = lower.replace(/\b(find|show|search|what|who|is|the|a|an)\b/g,' ').trim();
-  if (kw.length > 2) {
-    const empHits = STATE.data.employees.filter(e => JSON.stringify(e).toLowerCase().includes(kw));
-    if (empHits.length) { addBotMessageHTML(renderEmployeeTable(empHits)); return; }
-  }
-
-  // ── HR RAG Fallback
-
-  showTyping();
-
-  const ragResponse = await askHR(msg);
-
-  removeTyping();
-
-  if (ragResponse) {
-
-    const answer =
-      ragResponse.answer ||
-      ragResponse.response ||
-      ragResponse.result ||
-      ragResponse.message;
-
-    if (answer && answer.trim() !== "") {
-      addBotMessage(answer);
-      return;
-    }
-  }
-
-  // ── Final fallback
-
-  addBotMessage("The information was not found.");
+  // 👈 Add this line right after the while loop finishes:
+  console.log("=== RAW MODEL OUTPUT ===");
+  console.log(JSON.stringify(accumulatedText));
 }
 
 function filterBySelectedProjects(employees) {
@@ -915,7 +709,7 @@ function addBotMessage(html) {
   div.className = 'chat-msg bot';
   div.innerHTML = `
     <div class="chat-avatar bot"><i class="fa-solid fa-robot"></i></div>
-    <div class="chat-bubble">${html}</div>`;
+    <div class="chat-bubble bot-message"><div class="message-content">${html}</div></div>`;
   wrap.appendChild(div);
   wrap.scrollTop = wrap.scrollHeight;
 }
@@ -928,7 +722,7 @@ function addBotMessageHTML(html) {
   div.style.cssText = 'max-width:100%;width:100%';
   div.innerHTML = `
     <div class="chat-avatar bot"><i class="fa-solid fa-robot"></i></div>
-    <div class="chat-bubble" style="max-width:100%">${html}</div>`;
+    <div class="chat-bubble bot-message" style="max-width:100%"><div class="message-content">${html}</div></div>`;
   wrap.appendChild(div);
   wrap.scrollTop = wrap.scrollHeight;
 }

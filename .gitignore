@@ -1,3 +1,7 @@
+# Secrets
+backend/.env
+.env
+
 # Virtual Environment
 venv/
 env/

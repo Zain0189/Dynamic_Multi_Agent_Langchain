@@ -1,10 +1,18 @@
+from agent import stream_agent
+import os
+
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
-# from rag import stream_rag_HR_Policy
-# from rag import stream_rag_Healthcare_Policy
-from rag import stream_rag, HR_Policy_rag_chain, Healthcare_Policy_rag_chain
+
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+if not GROQ_API_KEY:
+    raise ValueError("GROQ_API_KEY is missing. Please set it in backend/.env")
+
 
 app = FastAPI()
 
@@ -17,39 +25,13 @@ app.add_middleware(
 )
 
 
-class Prompt(BaseModel):
-    prompt: str
-
-# @app.post("/ask-HR-Policy")
-# def ask_question(prompt: Prompt):
-#     generator = stream_rag_HR_Policy(prompt.prompt)
-#     return StreamingResponse(generator, media_type="text/plain")
-
-# @app.post("/ask-Healthcare-Policy")
-# def ask_question(prompt: Prompt):
-#     generator = stream_rag_Healthcare_Policy(prompt.prompt)
-#     return StreamingResponse(generator, media_type="text/plain")
+class ChatRequest(BaseModel):
+    message: str
 
 
-@app.post("/ask-HR-Policy")
-def ask_hr(prompt: Prompt):
-
+@app.post("/chat")
+async def chat_endpoint(request: ChatRequest):
     return StreamingResponse(
-        stream_rag(
-            HR_Policy_rag_chain,
-            prompt.prompt
-        ),
-        media_type="text/plain"
-    )
-
-
-@app.post("/ask-Healthcare-Policy")
-def ask_healthcare(prompt: Prompt):
-
-    return StreamingResponse(
-        stream_rag(
-            Healthcare_Policy_rag_chain,
-            prompt.prompt
-        ),
+        stream_agent(request.message),
         media_type="text/plain"
     )
