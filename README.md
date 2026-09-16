@@ -2,7 +2,7 @@
 
 An internal employee-support assistant for company data, attendance, hiring, HR policies, and healthcare policies. It combines a FastAPI backend, a LangGraph ReAct agent, Groq chat models, SQLite data tools, FAISS policy retrieval, and a plain HTML/CSS/JavaScript interface.
 
-![Dynamic Multi-Service Agent Interface](screenshots/chat_overview.png)
+![Dynamic Multi-Service Agent Interface](screenshots/chat_overview1.png)
 
 ## What It Does
 
