@@ -2,6 +2,8 @@
 
 An internal employee-support assistant for company data, attendance, hiring, HR policies, and healthcare policies. It combines a FastAPI backend, a LangGraph ReAct agent, Groq chat models, SQLite data tools, FAISS policy retrieval, and a plain HTML/CSS/JavaScript interface.
 
+![Dynamic Multi-Service Agent Interface](screenshots/chat_overview1.png)
+
 ## What It Does
 
 ### Autonomous chat
@@ -41,6 +43,20 @@ An internal employee-support assistant for company data, attendance, hiring, HR 
 - Dynamic single-column project list with vertical scrolling.
 - New Chat clears the current conversation without adding an automated welcome message.
 - The Documents and History sidebar views have been removed from the current interface.
+
+## Screenshots & Features
+
+### 1. Real-Time Employee Lookup & Analytics
+
+Directly querying an employee ID fetches live attendance ratios, project assignments, and salary details from SQLite without LLM hallucinations:
+
+![Live Employee Profile](screenshots/employee_profile.png)
+
+### 2. Healthcare & HR Policy RAG
+
+The agent automatically routes policy questions to vector indexes, returning clean markdown lists without intermediate tool noise:
+
+![Policy RAG Streaming Response](screenshots/policy_response.png)
 
 ## Architecture
 
