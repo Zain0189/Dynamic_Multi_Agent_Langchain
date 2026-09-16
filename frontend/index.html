@@ -22,15 +22,6 @@
       </div>
     </div>
     <div class="topbar-actions">
-      <button class="btn-badge" id="topProjectBadge">
-        <i class="fa-solid fa-building"></i>
-        <span id="topProjectName">System Limited</span>
-        <i class="fa-solid fa-arrow-up-right-from-square btn-external"></i>
-      </button>
-      <button class="btn-outline" id="btnUpdateNotes">
-        <i class="fa-regular fa-file-lines"></i>
-        <span>Update Notes</span>
-      </button>
       <button class="btn-primary" id="btnNewChat">
         <i class="fa-solid fa-pen-to-square"></i>
         <span>New Chat</span>
@@ -50,39 +41,8 @@
         <i class="fa-solid fa-chevron-left" id="toggleIcon"></i>
       </button>
 
-      <!-- Tabs -->
-      <div class="sidebar-tabs">
-        <button class="tab active" data-tab="search" title="Search &amp; Projects">
-          <i class="fa-solid fa-magnifying-glass"></i>
-          <span class="tab-label">Search</span>
-        </button>
-        <button class="tab" data-tab="docs" title="Upload &amp; Analyse Documents">
-          <i class="fa-solid fa-file-lines"></i>
-          <span class="tab-label">Documents</span>
-          <span class="tab-badge" id="docsBadge" style="display:none">0</span>
-        </button>
-        <button class="tab" data-tab="history" title="Activity History">
-          <i class="fa-solid fa-timeline"></i>
-          <span class="tab-label">History</span>
-          <span class="tab-badge" id="histBadge" style="display:none">0</span>
-        </button>
-      </div>
-
       <!-- ── SEARCH PANEL ── -->
       <div class="tab-panel active" id="tab-search">
-
-        <!-- Search by Project -->
-        <div class="sidebar-section">
-          <label class="section-label">
-            <i class="fa-solid fa-diagram-project"></i> Search by Project
-          </label>
-          <div class="select-wrap">
-            <select id="searchProject" class="sidebar-select">
-              <option value="">— Select Project —</option>
-            </select>
-            <i class="fa-solid fa-chevron-down select-arrow"></i>
-          </div>
-        </div>
 
         <!-- Search by Keyword -->
         <div class="sidebar-section">
@@ -111,81 +71,17 @@
           <p class="field-hint">Try: EMP001 – EMP020</p>
         </div>
 
-        <!-- Project Checkboxes -->
+        <!-- Projects -->
         <div class="sidebar-section">
           <label class="section-label">
             <i class="fa-solid fa-layer-group"></i> PROJECT
             <span class="label-hint">Select environments</span>
           </label>
-          <div class="project-grid" id="projectGrid">
-            <!-- Populated by JS -->
-          </div>
+          <div id="projectListContainer" class="projects-grid"></div>
         </div>
 
       </div>
 
-      <!-- ── DOCUMENTS PANEL ── -->
-      <div class="tab-panel" id="tab-docs">
-        <div class="sidebar-section">
-          <label class="section-label">
-            <i class="fa-solid fa-file-arrow-up"></i> Upload Documents
-            <span class="label-hint">.txt .csv .json .md</span>
-          </label>
-          <div class="drop-zone" id="dropZone">
-            <i class="fa-solid fa-cloud-arrow-up drop-icon"></i>
-            <p>Drag &amp; drop or click to upload</p>
-            <span class="drop-formats">TXT · CSV · JSON · MD</span>
-            <input type="file" id="fileInput" accept=".txt,.csv,.json,.md" multiple hidden />
-          </div>
-          <!-- Uploaded files list -->
-          <div class="uploaded-files" id="uploadedFiles"></div>
-        </div>
-
-        <!-- Document Analytics -->
-        <div class="sidebar-section" id="docAnalyticsSection" style="display:none">
-          <label class="section-label">
-            <i class="fa-solid fa-chart-bar"></i> Document Analytics
-          </label>
-          <div class="analytics-grid" id="analyticsGrid"></div>
-          <div class="top-words" id="topWords"></div>
-        </div>
-
-        <!-- Ask about document -->
-        <div class="sidebar-section" id="docQASection" style="display:none">
-          <label class="section-label">
-            <i class="fa-solid fa-comment-dots"></i> Ask about Document
-          </label>
-          <div class="doc-qa-wrap">
-            <div class="doc-qa-messages" id="docQAMessages">
-              <div class="qa-hint">Ask anything about the uploaded document…</div>
-            </div>
-            <div class="doc-qa-input-row">
-              <input type="text" id="docQAInput" placeholder="Type your question…" class="sidebar-input" />
-              <button class="btn-search" id="btnDocQA">
-                <i class="fa-solid fa-paper-plane"></i>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── HISTORY PANEL ── -->
-      <div class="tab-panel" id="tab-history">
-        <div class="sidebar-section">
-          <div class="section-label-row">
-            <label class="section-label" style="margin-bottom:0"><i class="fa-solid fa-timeline"></i> Recent Activity</label>
-            <button class="btn-clear-history" id="btnClearHistory" title="Clear all history">
-              <i class="fa-solid fa-trash-can"></i> Clear
-            </button>
-          </div>
-          <div class="history-list" id="historyList">
-            <div class="history-empty">
-              <i class="fa-regular fa-clock"></i>
-              <p>No recent activity yet</p>
-            </div>
-          </div>
-        </div>
-      </div>
     </aside>
 
     <!-- ===== MAIN CONTENT ===== -->
@@ -195,7 +91,7 @@
       <section class="hero-section" id="heroSection">
         <div class="hero-icon"><i class="fa-solid fa-comments"></i></div>
         <h1 class="hero-title">How can I help you today?</h1>
-        <p class="hero-subtitle">Ask me anything. I have access to tools, documents, and deep reasoning capabilities.</p>
+        <p class="hero-subtitle">Ask about employee profiles, project metrics, HR policies, or healthcare insurance.</p>
       </section>
 
       <!-- Results Panel (hidden initially) -->
@@ -285,8 +181,7 @@
           </button>
         </div>
         <p class="chat-footer-note">
-          Press <kbd>Enter</kbd> to send · <kbd>Shift+Enter</kbd> for new line &nbsp;|&nbsp;
-          Data loaded from <code>data.json</code>
+          Press <kbd>Enter</kbd> to send · <kbd>Shift+Enter</kbd> for new line
         </p>
       </div>
 

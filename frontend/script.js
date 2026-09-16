@@ -4,6 +4,7 @@
    ============================================================ */
 
 // Autonomous agent integration
+const API_BASE = "http://127.0.0.1:8000";
 
 function createStreamingBotMessage() {
 
@@ -26,7 +27,7 @@ function createStreamingBotMessage() {
 
 
 async function streamAgentResponse(question) {
-  const response = await fetch("http://127.0.0.1:8000/chat", {
+  const response = await fetch(`${API_BASE}/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -205,71 +206,60 @@ async function loadData() {
 
 // ── Init ─────────────────────────────────────────────────────
 function init() {
-  buildProjectDropdown();
   buildProjectGrid();
   bindSidebarToggle();
-  bindTabs();
-  bindDropZone();
-  bindDocQA();
   bindSearchButtons();
   bindChatInput();
   bindCardClicks();
   bindTopActions();
   bindModal();
   bindResultsClose();
-  // addBotWelcome();
-}
-
-// ── Welcome message ──────────────────────────────────────────
-function addBotWelcome() {
-  const p = STATE.data.projects.filter(x => x.id !== 'ALL').length;
-  const e = STATE.data.employees.length;
-  const j = STATE.data.jobs.filter(x => x.status === 'Open').length;
-  addBotMessage(
-    `👋 Hello! I'm <b>DMSA</b> — your Dynamic Multi-Service Agent.<br><br>` +
-    `I have access to:<br>` +
-    `• <b>${p} Projects</b> · <b>${e} Employees</b> · <b>${j} Open Jobs</b><br>` +
-    `• Medical claims, HR policies &amp; document analysis<br><br>` +
-    `Try typing <i>"show all projects"</i>, <i>"EMP005"</i>, or click a suggestion above.`
-  );
-}
-
-// ── Project Dropdown ─────────────────────────────────────────
-function buildProjectDropdown() {
-  const sel = $('searchProject');
-  sel.innerHTML = '<option value="">— Select Project —</option>';
-  STATE.data.projects.forEach(p => {
-    const opt = document.createElement('option');
-    opt.value = p.id;
-    opt.textContent = p.name + (p.env ? ` (${p.env})` : '');
-    sel.appendChild(opt);
-  });
 }
 
 // ── Project Grid ─────────────────────────────────────────────
-function buildProjectGrid() {
-  const grid = $('projectGrid');
+async function buildProjectGrid() {
+  const grid = $('projectListContainer');
+  if (!grid) return;
+
+  let projects = [];
+  try {
+    const response = await fetch(`${API_BASE}/api/projects`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    projects = await response.json();
+  } catch (error) {
+    projects = (STATE.data?.projects || [])
+      .filter(project => project.id !== 'ALL' && project.status === 'Active')
+      .map(project => ({
+        name: project.name,
+        environment: project.env || 'Active',
+        client: project.client || '',
+        status: project.status,
+        status_color: project.color || '#10b981'
+      }));
+  }
+
   grid.innerHTML = '';
-  STATE.data.projects.forEach(p => {
-    const label = document.createElement('label');
-    label.className = 'checkbox-card' + (p.id === 'SYS' ? ' active' : '');
-    label.innerHTML = `
-      <input type="checkbox" value="${p.id}" ${p.id === 'SYS' ? 'checked' : ''} />
-      <span style="display:flex;flex-direction:column">
-        <span style="font-weight:600">${esc(p.name)}</span>
-        <em>${esc(p.env)}</em>
+  projects.forEach(project => {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'project-item';
+    card.dataset.projectName = project.name;
+    card.innerHTML = `
+      <span class="project-info project-item-copy">
+        <strong class="project-name">${esc(project.name)}</strong>
+        <small class="project-env">${esc(project.environment || project.client || '')}</small>
       </span>
-      <span class="proj-dot" style="width:8px;height:8px;border-radius:50%;background:${esc(p.color)};flex-shrink:0;margin-left:auto"></span>`;
-    const cb = label.querySelector('input');
-    cb.addEventListener('change', () => {
-      label.classList.toggle('active', cb.checked);
-      if (cb.checked) STATE.selectedProjects.add(p.id);
-      else STATE.selectedProjects.delete(p.id);
-      const first = STATE.data.projects.find(x => STATE.selectedProjects.has(x.id));
-      if (first) $('topProjectName').textContent = first.name;
+      <span class="project-status-dot" style="background:${esc(project.status_color || '#10b981')}"></span>`;
+    card.addEventListener('click', () => {
+      const wasSelected = card.classList.contains('active');
+      grid.querySelectorAll('.project-item.active').forEach(item => item.classList.remove('active'));
+      STATE.selectedProjects.clear();
+      if (!wasSelected) {
+        card.classList.add('active');
+        STATE.selectedProjects.add(project.name);
+      }
     });
-    if (p.id === 'SYS') STATE.selectedProjects.add('SYS');
-    grid.appendChild(label);
+    grid.appendChild(card);
   });
 }
 
@@ -297,42 +287,6 @@ function bindSidebarToggle() {
   });
 }
 
-// ── Tab Switching ─────────────────────────────────────────────
-function bindTabs() {
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      const name = tab.dataset.tab;
-      switchTab(name);
-      onTabActivated(name);
-    });
-  });
-}
-
-function onTabActivated(name) {
-  if (!STATE.data) return;
-  if (name === 'search') {
-    // auto-show all employees when Search tab is clicked
-    const hasResults = $('resultsPanel').style.display !== 'none' &&
-                       $('resultsPanel').style.display !== '';
-    // if (!hasResults) {
-    //   setTimeout(() => showAllEmployees(), 200);
-    // }
-  } else if (name === 'docs') {
-    if (STATE.uploadedDocs.length && STATE.activeDocIndex !== null) {
-      setTimeout(() => showDocAnalytics(STATE.uploadedDocs[STATE.activeDocIndex]), 200);
-    }
-  } else if (name === 'history') {
-    updateHistBadge();
-  }
-}
-
-function switchTab(name) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  document.querySelector(`.tab[data-tab="${name}"]`).classList.add('active');
-  $('tab-' + name).classList.add('active');
-}
-
 function openSidebar() {
   const sb = $('sidebar');
   if (window.innerWidth <= 660) {
@@ -350,14 +304,11 @@ function bindSearchButtons() {
   $('searchKeyword').addEventListener('keydown', e => { if (e.key==='Enter') doKeywordSearch(); });
   $('btnEmpSearch').addEventListener('click', doEmployeeSearch);
   $('searchEmpId').addEventListener('keydown', e => { if (e.key==='Enter') doEmployeeSearch(); });
-  $('searchProject').addEventListener('change', doProjectSearch);
 }
 
 function doKeywordSearch() {
   const kw = $('searchKeyword').value.trim().toLowerCase();
   if (!kw) { toast('Enter a keyword to search.','error','fa-circle-exclamation'); return; }
-  addHistory(`Keyword: "${kw}"`, 'fa-magnifying-glass', () => { $('searchKeyword').value = kw; doKeywordSearch(); });
-
   const emps   = STATE.data.employees.filter(e => JSON.stringify(e).toLowerCase().includes(kw));
   const jobs   = STATE.data.jobs.filter(j => JSON.stringify(j).toLowerCase().includes(kw));
   const claims = STATE.data.medicalClaims.filter(c => JSON.stringify(c).toLowerCase().includes(kw));
@@ -376,24 +327,30 @@ function doKeywordSearch() {
   showResults(`Keyword: "<b>${esc(kw)}</b>" — ${total} result(s)`, html);
 }
 
-function doEmployeeSearch() {
-  const raw = $('searchEmpId').value.trim().toUpperCase();
+async function doEmployeeSearch() {
+  const input = $('searchEmpId');
+  const button = $('btnEmpSearch');
+  const raw = input.value.trim();
   if (!raw) { toast('Enter an Employee ID.','error','fa-circle-exclamation'); return; }
-  const emp = STATE.data.employees.find(e => e.id === raw);
-  if (!emp) { toast(`No employee found: ${raw}`,'error','fa-circle-exclamation'); return; }
-  addHistory(`Employee: ${emp.name}`, 'fa-user', () => showResults(`Employee: <b>${esc(emp.name)}</b>`, renderEmployeeCard(emp)));
-  showResults(`Employee Profile: <b>${esc(emp.name)}</b>`, renderEmployeeCard(emp));
-}
 
-function doProjectSearch() {
-  const pid = $('searchProject').value;
-  if (!pid) return;
-  const proj = STATE.data.projects.find(p => p.id === pid);
-  const emps = STATE.data.employees.filter(e => e.project === pid);
-  const jobs = STATE.data.jobs.filter(j => j.project === pid);
-  addHistory(`Project: ${proj?.name || pid}`, 'fa-diagram-project',
-    () => showProjectDetail(pid));
-  showProjectDetail(pid);
+  button.disabled = true;
+  button.classList.add('is-loading');
+  button.setAttribute('aria-busy', 'true');
+  try {
+    const response = await fetch(`${API_BASE}/api/employees/${encodeURIComponent(raw)}`);
+    if (!response.ok) {
+      if (response.status === 404) throw new Error('Employee not found in database');
+      throw new Error('Unable to load employee details');
+    }
+    const employee = await response.json();
+    showResults(`Employee Profile: <b>${esc(employee.name)}</b>`, renderEmployeeCard(employee));
+  } catch (error) {
+    showResults('Employee Profile', noResults(error.message || 'Employee not found in database'));
+  } finally {
+    button.disabled = false;
+    button.classList.remove('is-loading');
+    button.removeAttribute('aria-busy');
+  }
 }
 
 function showProjectDetail(pid) {
@@ -422,152 +379,12 @@ function showProjectDetail(pid) {
   showResults(`Project: <b>${esc(proj.name)}</b>`, html);
 }
 
-// ── Drop Zone ────────────────────────────────────────────────
-function bindDropZone() {
-  const dz = $('dropZone'), fi = $('fileInput');
-  dz.addEventListener('click', () => fi.click());
-  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
-  dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
-  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
-  fi.addEventListener('change', () => handleFiles(fi.files));
-}
-
-function handleFiles(fileList) {
-  [...fileList].forEach(file => {
-    const ext = file.name.split('.').pop().toLowerCase();
-    if (!['txt','csv','json','md'].includes(ext)) {
-      toast(`Unsupported: .${ext}`,'error','fa-circle-exclamation'); return;
-    }
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const content = ev.target.result;
-      const doc = { name: file.name, size: file.size, content, ext, words: tokenize(content) };
-      STATE.uploadedDocs.push(doc);
-      STATE.activeDocIndex = STATE.uploadedDocs.length - 1;
-      renderUploadedFiles();
-      showDocAnalytics(doc);
-      $('docAnalyticsSection').style.display = '';
-      $('docQASection').style.display = '';
-      updateDocBadge();
-      addHistory(`Uploaded: ${file.name}`, 'fa-file-arrow-up');
-      toast(`"${file.name}" uploaded & analysed!`, 'success', 'fa-check-circle');
-    };
-    reader.readAsText(file);
-  });
-}
-
-function tokenize(text) {
-  return text.toLowerCase().replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(w => w.length > 2);
-}
-
-function renderUploadedFiles() {
-  const wrap = $('uploadedFiles');
-  if (!STATE.uploadedDocs.length) { wrap.innerHTML = ''; return; }
-  wrap.innerHTML = STATE.uploadedDocs.map((d, i) => `
-    <div class="uploaded-file-item">
-      <i class="fa-solid fa-file-lines file-icon"></i>
-      <span class="file-name" title="${esc(d.name)}">${esc(d.name)}</span>
-      <span class="file-size">${formatSize(d.size)}</span>
-      ${STATE.activeDocIndex === i
-        ? '<span class="file-active"><i class="fa-solid fa-circle-dot"></i> Active</span>'
-        : `<button class="file-remove" onclick="setActiveDoc(${i})" title="Set Active"><i class="fa-solid fa-circle-play"></i></button>`}
-      <button class="file-remove" onclick="removeDoc(${i})" title="Remove"><i class="fa-solid fa-xmark"></i></button>
-    </div>`).join('');
-}
-
-function setActiveDoc(i) {
-  STATE.activeDocIndex = i;
-  showDocAnalytics(STATE.uploadedDocs[i]);
-  renderUploadedFiles();
-  $('docQAMessages').innerHTML = '<div class="qa-hint">Ask anything about the uploaded document…</div>';
-}
-
-function removeDoc(i) {
-  STATE.uploadedDocs.splice(i, 1);
-  if (STATE.activeDocIndex >= STATE.uploadedDocs.length) STATE.activeDocIndex = STATE.uploadedDocs.length - 1;
-  if (STATE.uploadedDocs.length === 0) STATE.activeDocIndex = null;
-  renderUploadedFiles();
-  updateDocBadge();
-  if (!STATE.uploadedDocs.length) {
-    $('docAnalyticsSection').style.display = 'none';
-    $('docQASection').style.display = 'none';
-  } else {
-    showDocAnalytics(STATE.uploadedDocs[STATE.activeDocIndex]);
-  }
-}
-
-function showDocAnalytics(doc) {
-  const lines     = doc.content.split('\n').length;
-  const words     = doc.words.length;
-  const chars     = doc.content.length;
-  const sentences = (doc.content.match(/[.!?]+/g)||[]).length;
-  const stopWords = new Set(['the','and','for','are','was','has','not','with','this','that','from','have','been','they','will','into','more','also','than','then','when','what','which','just','like','some','over','its','can','but','you','all','our','out','one','had','she','her','him','his','who','were','said','each','we','is','it','to','of','in','a','an','on','at','be','do','by','if','or','as','he','so','no','up','may','my','your','their','would','could','should','about','after','before','other','such','only','even','any','both','still','first','well','where','while','those','these','very']);
-  const freq = {};
-  doc.words.filter(w => !stopWords.has(w) && w.length > 3).forEach(w => freq[w] = (freq[w]||0)+1);
-  const topWords = Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,14);
-
-  $('analyticsGrid').innerHTML = `
-    <div class="analytics-stat"><div class="stat-val">${lines.toLocaleString()}</div><div class="stat-label">Lines</div></div>
-    <div class="analytics-stat"><div class="stat-val">${words.toLocaleString()}</div><div class="stat-label">Words</div></div>
-    <div class="analytics-stat"><div class="stat-val">${chars.toLocaleString()}</div><div class="stat-label">Characters</div></div>
-    <div class="analytics-stat"><div class="stat-val">${sentences.toLocaleString()}</div><div class="stat-label">Sentences</div></div>`;
-  $('topWords').innerHTML = topWords.length ? `
-    <div class="top-words-title" style="margin-top:10px"><i class="fa-solid fa-fire-flame-curved" style="color:#f59e0b"></i> Top Keywords</div>
-    <div class="word-tags" style="margin-top:6px">${topWords.map(([w,c])=>`<span class="word-tag" title="${c}×">${esc(w)}</span>`).join('')}</div>` : '';
-}
-
-function updateDocBadge() {
-  const badge = $('docsBadge');
-  const n = STATE.uploadedDocs.length;
-  badge.style.display = n ? '' : 'none';
-  badge.textContent = n;
-}
-
-// ── Document Q&A ─────────────────────────────────────────────
-function bindDocQA() {
-  $('btnDocQA').addEventListener('click', doDocQA);
-  $('docQAInput').addEventListener('keydown', e => { if (e.key==='Enter') { e.preventDefault(); doDocQA(); } });
-}
-
-function doDocQA() {
-  const q = $('docQAInput').value.trim();
-  if (!q) return;
-  if (STATE.activeDocIndex === null || !STATE.uploadedDocs.length) {
-    toast('Please upload a document first.','error','fa-circle-exclamation'); return;
-  }
-  $('docQAInput').value = '';
-  const msgs = $('docQAMessages');
-  msgs.querySelector('.qa-hint')?.remove();
-  msgs.innerHTML += `<div class="qa-msg user">${esc(q)}</div>`;
-  const doc = STATE.uploadedDocs[STATE.activeDocIndex];
-  setTimeout(() => {
-    msgs.innerHTML += `<div class="qa-msg bot">${searchInDocument(doc.content, q)}</div>`;
-    msgs.scrollTop = msgs.scrollHeight;
-  }, 300);
-  msgs.scrollTop = msgs.scrollHeight;
-  addHistory(`Doc Q&A: ${q.substring(0,28)}…`, 'fa-comment-dots');
-}
-
-function searchInDocument(content, query) {
-  const qWords = query.toLowerCase().replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(w=>w.length>2);
-  const lines  = content.split('\n').filter(l=>l.trim());
-  const scored = lines.map(line => {
-    const lower = line.toLowerCase();
-    const score = qWords.reduce((s,w) => s+(lower.includes(w)?1:0), 0);
-    return { line, score };
-  }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
-
-  if (!scored.length) return `I couldn't find content matching "<b>${esc(query)}</b>". Try different keywords.`;
-  const top = scored.slice(0,3).map(x=>`• ${esc(x.line.trim())}`).join('<br>');
-  return `Most relevant lines from document:<br><br>${top}`;
-}
-
 // ── Card Clicks ──────────────────────────────────────────────
 function bindCardClicks() {
   document.querySelectorAll('.feature-card').forEach(card => {
     card.addEventListener('click', () => {
       const action = card.dataset.action;
-      if (action === 'logs') { openSidebar(); switchTab('docs'); return; }
+      if (action === 'logs') { toast('Document tools are not available in this view.', 'info'); return; }
       quickAction(action);
     });
     card.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' ') card.click(); });
@@ -576,7 +393,7 @@ function bindCardClicks() {
 
 function quickAction(action) {
   if (!STATE.data) return;
-  if (action === 'logs') { openSidebar(); switchTab('docs'); return; }
+  if (action === 'logs') { toast('Document tools are not available in this view.', 'info'); return; }
   injectSuggestion(action === 'medical' ? 'claims' : action);
 }
 
@@ -611,11 +428,7 @@ function bindChatInput() {
 
   if (attachBtn) {
     attachBtn.addEventListener('click', () => {
-      openSidebar(); switchTab('docs');
-      setTimeout(() => {
-        const fileInput = $('fileInput');
-        if (fileInput) fileInput.click();
-      }, 150);
+      toast('Document upload is not available in this view.', 'info');
     });
   }
 }
@@ -649,7 +462,6 @@ function sendChat() {
   console.log('Send triggered');
   ta.value = ''; ta.style.height = 'auto';
   addUserMessage(msg);
-  addHistory(msg.substring(0,38) + (msg.length>38?'…':''), 'fa-comment');
   showTyping();
   setTimeout(() => { removeTyping(); processChat(msg); }, 650);
 }
@@ -773,27 +585,29 @@ function renderProjectsTable(projs) {
 
 // ── Render: Employee Card ─────────────────────────────────────
 function renderEmployeeCard(emp) {
-  const initials = emp.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
-  const pct = n => Math.round((n/emp.attendance.total)*100);
-  const proj = STATE.data.projects.find(p => p.id === emp.project);
+  const initials = emp.initials || emp.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+  const totalDays = emp.attendance.total_days || 0;
+  const pct = n => totalDays ? Math.round((n/totalDays)*100) : 0;
+  const project = emp.project || emp.client || 'Not assigned';
+  const salary = emp.salary || 'Not available';
   return `
     <div class="emp-card">
       <div class="emp-avatar">${esc(initials)}</div>
       <div class="emp-info">
         <h3>${esc(emp.name)}</h3>
-        <div class="emp-pos">${esc(emp.position)} · ${esc(emp.department)}</div>
+        <div class="emp-pos">${esc(emp.designation)} · ${esc(emp.department)}</div>
         <div class="emp-meta">
           <span class="emp-meta-item"><i class="fa-solid fa-id-badge" style="color:#7c3aed"></i> ${esc(emp.id)}</span>
           <span class="emp-meta-item"><i class="fa-solid fa-envelope" style="color:#3b82f6"></i> ${esc(emp.email)}</span>
-          <span class="emp-meta-item"><i class="fa-solid fa-phone" style="color:#10b981"></i> ${esc(emp.phone)}</span>
-          <span class="emp-meta-item"><i class="fa-solid fa-calendar" style="color:#f59e0b"></i> Joined: ${esc(emp.joinDate)}</span>
-          <span class="emp-meta-item"><i class="fa-solid fa-diagram-project" style="color:#a855f7"></i> ${esc(proj?.name||emp.project)}</span>
-          <span class="emp-meta-item"><i class="fa-solid fa-money-bill" style="color:#10b981"></i> PKR ${emp.salary.toLocaleString()}/mo</span>
+          <span class="emp-meta-item"><i class="fa-solid fa-phone" style="color:#10b981"></i> ${esc(emp.phone || 'Not available')}</span>
+          <span class="emp-meta-item"><i class="fa-solid fa-calendar" style="color:#f59e0b"></i> Joined: ${esc(emp.join_date)}</span>
+          <span class="emp-meta-item"><i class="fa-solid fa-diagram-project" style="color:#a855f7"></i> ${esc(project)}</span>
+          <span class="emp-meta-item"><i class="fa-solid fa-money-bill" style="color:#10b981"></i> ${esc(salary)}</span>
           ${statusBadge(emp.status)}
         </div>
       </div>
       <div class="emp-attendance">
-        <div style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Attendance (${emp.attendance.total} days)</div>
+        <div style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Attendance (${totalDays} days)</div>
         ${['present','absent','leave'].map(k=>{
           const colors={present:'#10b981',absent:'#ef4444',leave:'#f59e0b'};
           return `<div class="att-bar-group">
@@ -840,7 +654,6 @@ function showAllEmployees() {
     ${renderEmployeeTable(all)}`;
   showResults(`👥 All Employees (${all.length})`, html);
   addBotMessage(`Here are all <b>${all.length} employees</b> — ${active} active, ${onLeave} on leave.`);
-  addHistory('All Employees', 'fa-users');
 }
 
 // ── Show: All Projects ────────────────────────────────────────
@@ -856,7 +669,6 @@ function showAllProjects() {
     </div>
     ${renderProjectsTable(projs)}`;
   showResults('🏢 All Projects', html);
-  addHistory('All Projects', 'fa-diagram-project');
 }
 
 // ── Show: Attendance ──────────────────────────────────────────
@@ -913,7 +725,6 @@ function showAttendanceReport() {
       </div>
     </div>`;
   showResults('📅 Attendance Report', html);
-  addHistory('Attendance Report','fa-calendar-check');
 }
 
 // ── Show: Jobs ────────────────────────────────────────────────
@@ -927,7 +738,6 @@ function showJobsPanel() {
     </div>
     ${renderJobsTable(STATE.data.jobs)}`;
   showResults('💼 Latest Jobs &amp; Hiring', html);
-  addHistory('Jobs & Hiring','fa-briefcase');
 }
 
 function renderJobsTable(jobs) {
@@ -965,7 +775,6 @@ function showMedicalClaims() {
     </div>
     <div style="margin-top:14px">${renderClaimsTable(claims)}</div>`;
   showResults('🏥 Medical Claim Information', html);
-  addHistory('Medical Claims','fa-file-medical');
 }
 
 function renderClaimsTable(claims) {
@@ -1021,7 +830,6 @@ function showHRPolicies() {
     </div>`;
 
   showResults('📋 HR Policies', html);
-  addHistory('HR Policies', 'fa-book');
 }
 
 function renderPoliciesTable(policies) {
@@ -1038,71 +846,14 @@ function renderPoliciesTable(policies) {
   </table></div>`;
 }
 
-// ── History ───────────────────────────────────────────────────
-function addHistory(text, icon = 'fa-clock', callback = null) {
-  STATE.history.unshift({ text, icon, time: now(), callback });
-  updateHistBadge();
-  renderHistory();
-}
-
-function renderHistory() {
-  const list = $('historyList');
-  if (!STATE.history.length) {
-    list.innerHTML = `<div class="history-empty"><i class="fa-regular fa-clock"></i><p>No recent activity yet</p></div>`;
-    return;
-  }
-  list.innerHTML = STATE.history.slice(0,25).map((h,i) => `
-    <div class="history-item" onclick="replayHistory(${i})" title="Click to replay">
-      <i class="fa-solid ${esc(h.icon)}"></i>
-      <span class="history-item-text">${esc(h.text)}</span>
-      <span class="history-item-time">${esc(h.time)}</span>
-    </div>`).join('');
-}
-
-function replayHistory(i) {
-  const h = STATE.history[i];
-  if (h?.callback) { h.callback(); toast('Replayed: ' + h.text.substring(0,30), 'info'); }
-}
-
-function updateHistBadge() {
-  const badge = $('histBadge');
-  const n = STATE.history.length;
-  badge.style.display = n ? '' : 'none';
-  badge.textContent = n > 99 ? '99+' : n;
-}
-
 // ── Top Bar Actions ───────────────────────────────────────────
 function bindTopActions() {
   $('btnNewChat').addEventListener('click', () => {
     $('chatMessages').innerHTML = '';
     $('resultsPanel').style.display = 'none';
-    addBotWelcome();
     toast('New chat started.','success','fa-check');
   });
 
-  $('btnClearHistory').addEventListener('click', () => {
-    STATE.history = [];
-    updateHistBadge();
-    renderHistory();
-    toast('History cleared.','info','fa-trash-can');
-  });
-
-  $('btnUpdateNotes').addEventListener('click', () => {
-    openModal('📝 Update Notes — v3.0', `
-      <p style="font-size:13px;line-height:1.7;color:#374151;margin-bottom:12px"><b>v3.0 — Jul 2026</b></p>
-      <ul style="padding-left:18px;font-size:13px;line-height:2.1;color:#4b5563;margin-bottom:16px">
-        <li>14 projects: Ethisalat, System Limited, CelcomDigi, STZA, Glap-Plus, HEC, PTCL, Jazz, NetSol, FBR, NADRA, OGDCL, PMSA, NLC</li>
-        <li>20 employees across all projects with salary data</li>
-        <li>14 job openings · 10 medical claims · 8 HR policies</li>
-        <li>Smart chat: employee ID, name, dept, project, keyword search</li>
-        <li>Clickable history log with replay — badges on tabs</li>
-        <li>Hero suggestion chips + 5 quick-action chat buttons</li>
-        <li>Document upload with analytics &amp; Q&amp;A (txt/csv/json/md)</li>
-      </ul>
-      <a href="prompts.html" target="_blank" style="display:flex;align-items:center;gap:8px;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:700;text-decoration:none">
-        <i class="fa-solid fa-book-open"></i> Open Full Prompt Reference Guide →
-      </a>`);
-  });
 }
 
 // ── Modal ─────────────────────────────────────────────────────
@@ -1120,4 +871,4 @@ function openModal(title, bodyHTML) {
 function closeModal() { $('modalOverlay').classList.remove('active'); }
 
 // ── Boot ──────────────────────────────────────────────────────
-loadData();
+document.addEventListener('DOMContentLoaded', loadData);
